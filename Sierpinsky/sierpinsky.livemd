@@ -1,0 +1,107 @@
+# Sierpinsky Triangle
+
+```elixir
+Mix.install([
+  {:kino_vega_lite, "~> 0.1.13"},
+  {:vega_lite, "~> 0.1.11"}
+])
+```
+
+## Section
+
+```elixir
+alias VegaLite, as: Vl
+alias Kino.VegaLite, as: KVl
+```
+
+```elixir
+defmodule Sierpinsky do
+# The Sierpinsky triangle is a type  of fractal. The traditional method of
+# constructing it  involves taking an equilateral  triangle and repeatedly
+# removing the central portion, carrying on this process indefinitely with
+# each of the  smaller triangles that form. 
+# The approach  we're using here is  a bit  different. 
+# We  begin by  plotting a  random point  within the
+# triangle, then calculate the midpoint between  this point and one of the
+# vertices  (chosen at  random). After  marking this  midpoint, we  simply
+# carry on with the process, using our newly plotted point as the starting
+# position and once  again finding the midpoint between it  and a randomly
+# selected vertex.
+  
+  @dim 200
+  
+  # Initialize the chart
+  def init do
+    chart =
+      Vl.new(width: @dim * 2, height: @dim * 2)
+      |> Vl.mark(:point, size: 1)
+      |> Vl.encode_field(:x, "x", type: :quantitative)
+      |> Vl.encode_field(:y, "y", type: :quantitative)  
+      |> KVl.render() 
+    vertex_y = :math.sqrt(@dim * @dim - @dim * @dim / 4)
+    vertexes = [%{x: 0, y: 0}, %{x: @dim, y: 0}, %{x: @dim / 2, y: vertex_y}]
+    {chart, vertexes}
+  end
+
+  def refresh(chart, vertexes) do
+    KVl.clear(chart)
+    KVl.push_many(chart, vertexes)
+  end
+
+  # Calculate the midpoint between two points
+  def midpoint(point1, point2) do
+    %{x: (point1[:x] + point2[:x])/2, y: (point1[:y] + point2[:y])/2}
+  end
+
+  # first draw, add the vertexes to the graph
+  def first_draw(chart, vertexes) do
+    KVl.push_many(chart, vertexes)
+  end
+
+  # draw the next point in the fractal
+  def next_point(vertexes, [point | list]) do
+    # chose a midpoint between the previous point and a randomly selected vertex
+    next_point = midpoint(Enum.at(vertexes, Enum.random(0..2)), point)
+    [next_point, point | list]
+  end
+
+  def draw(chart, vertexes, iterations) do
+    for _ <- 0..trunc(iterations/100) do 
+      points = Enum.reduce(1..100, [%{x: 0, y: 0}], 
+               fn _i, point_list -> 
+                 next_point(vertexes, point_list) 
+               end)
+      KVl.push_many(chart, points)
+    end
+  end
+end
+```
+
+```elixir
+# initialize the frame
+{chart, vertexes} = Sierpinsky.init()
+Sierpinsky.first_draw(chart, vertexes)
+
+# create the buttons
+frame = Kino.Frame.new() |> Kino.render()
+input = Kino.Input.range("Iterations", min: 100, max: 60000)
+start = Kino.Control.button("Start") 
+clear = Kino.Control.button("Clear") 
+
+layout = Kino.Layout.grid([input, start, clear], columns: 3) 
+Kino.Frame.render(frame, layout)
+
+stream = Kino.Control.tagged_stream([iterations: input, start: start, clear: clear]) 
+
+Kino.listen(stream, %{iterations: 100}, fn
+  {:iterations, event}, state -> 
+    {:cont, %{state | iterations: trunc(event.value)}} 
+  {:start, _}, state ->
+    IO.puts("Iterations: #{state.iterations}")
+   Sierpinsky.draw(chart, vertexes, state.iterations)
+    {:cont, state}
+  {:clear, _}, state -> 
+    Sierpinsky.refresh(chart, vertexes)
+    {:cont, state}
+  end)
+```
